@@ -180,5 +180,41 @@ const Providers = {
 		}
 
 		return result;
+	},
+	lrclib: async info => {
+		const result = {
+			error: null,
+			uri: info.uri,
+			karaoke: null,
+			synced: null,
+			unsynced: null,
+			provider: "lrclib",
+		};
+
+		let list;
+		try {
+			list = await ProviderLrclib.findLyrics(info);
+			if (list.error) {
+				throw "";
+			}
+		} catch {
+			result.error = "No lyrics";
+			return result;
+		}
+
+		const karaoke = await ProviderLrclib.getKaraoke(list);
+		if (karaoke) {
+			result.karaoke = karaoke;
+			//lrclib doesn't provide copyright info? 
+		}
+		const synced = ProviderMusixmatch.getSynced(list);
+		if (synced) {
+			result.synced = synced;
+		}
+		const unsynced = synced || ProviderMusixmatch.getUnsynced(list);
+		if (unsynced) {
+			result.unsynced = unsynced;
+		}
+		return result;
 	}
 };
