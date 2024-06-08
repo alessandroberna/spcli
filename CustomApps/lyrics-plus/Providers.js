@@ -9,34 +9,33 @@ const Providers = {
 			copyright: null
 		};
 
-		const baseURL = "https://spclient.wg.spotify.com/color-lyrics/v2/track/";
+		const baseURL = "wg://lyrics/v1/track/";
 		const id = info.uri.split(":")[2];
 		let body;
 		try {
-			body = await Spicetify.CosmosAsync.get(`${baseURL + id}?format=json&vocalRemoval=false&market=from_token`);
+			body = await CosmosAsync.get(baseURL + id);
 		} catch {
 			return { error: "Request error", uri: info.uri };
 		}
 
-		const lyrics = body.lyrics;
-		if (!lyrics) {
+		const lines = body.lines;
+		if (!lines || !lines.length) {
 			return { error: "No lyrics", uri: info.uri };
 		}
 
-		const lines = lyrics.lines;
-		if (lyrics.syncType === "LINE_SYNCED") {
+		if (typeof lines[0].time === "number") {
 			result.synced = lines.map(line => ({
-				startTime: line.startTimeMs,
-				text: line.words
+				startTime: line.time,
+				text: line.words.map(b => b.string).join(" ")
 			}));
 			result.unsynced = result.synced;
 		} else {
-			result.unsynced = lyrics.map(line => ({
-				text: line.words
+			result.unsynced = lines.map(line => ({
+				text: line.words.map(b => b.string).join(" ")
 			}));
 		}
 
-		result.provider = lyrics.provider;
+		result.provider = body.provider;
 
 		return result;
 	},
@@ -67,17 +66,17 @@ const Providers = {
 		const karaoke = await ProviderMusixmatch.getKaraoke(list);
 		if (karaoke) {
 			result.karaoke = karaoke;
-			result.copyright = list["track.lyrics.get"].message?.body?.lyrics?.lyrics_copyright?.trim();
+			result.copyright =""// list["track.lyrics.get"].message?.body?.lyrics?.lyrics_copyright?.trim();
 		}
 		const synced = ProviderMusixmatch.getSynced(list);
 		if (synced) {
 			result.synced = synced;
-			result.copyright = list["track.subtitles.get"].message?.body?.subtitle_list?.[0]?.subtitle.lyrics_copyright.trim();
+			result.copyright ="" //list["track.subtitles.get"].message?.body?.subtitle_list?.[0]?.subtitle.lyrics_copyright.trim();
 		}
 		const unsynced = synced || ProviderMusixmatch.getUnsynced(list);
 		if (unsynced) {
 			result.unsynced = unsynced;
-			result.copyright = list["track.lyrics.get"].message?.body?.lyrics?.lyrics_copyright?.trim();
+			result.copyright =""// list["track.lyrics.get"].message?.body?.lyrics?.lyrics_copyright?.trim();
 		}
 		const translation = await ProviderMusixmatch.getTranslation(list);
 		if ((synced || unsynced) && translation) {
