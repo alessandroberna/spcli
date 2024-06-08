@@ -1,12 +1,63 @@
-const ProviderMusixmatch = (() => {
+const ProviderMusixmatch = (function () {
 	const headers = {
 		authority: "apic-desktop.musixmatch.com",
 		cookie: "x-mxm-token-guid="
 	};
 
 	async function findLyrics(info) {
-		const baseURL =
-			"https://apic-desktop.musixmatch.com/ws/1.1/macro.subtitles.get?format=json&namespace=lyrics_richsynched&subtitle_format=mxm&app_id=web-desktop-app-v1.0&";
+		   const cleanTitle = Utils.removeExtraInfo(Utils.removeSongFeat(Utils.normalize(info.title)));
+		 let baseURL = "https://lrclib.net/api/search?q=" + encodeURIComponent(info.artist + " " + info.title);
+		// alert(baseURL);
+         let body = await Spicetify.CosmosAsync.get(baseURL);
+		 const neAlbumName = Utils.normalize(info.album);
+		 const expectedAlbumName = Utils.containsHanCharacter(neAlbumName) ? await Utils.toSimplifiedChinese(neAlbumName) : neAlbumName;
+		
+		const recreatedBody = [];
+
+// Iterate over each item in the body array
+body.forEach(function(item) {
+    // Check if syncedLyrics is true
+    if (item.syncedLyrics) {
+        // Add the item to the recreatedBody array
+        recreatedBody.push(item);
+    }
+});
+
+//const recreatedJson = JSON.stringify(recreatedBody);
+
+//alert(recreatedBody[0].syncedLyrics);
+			
+	 const itemId = recreatedBody.findIndex(val => Utils.normalize(val.albumName) === expectedAlbumName  || Math.abs(info.duration - (val.duration*1000)) < 1000);
+       //  //const itemId = body.findIndex(val => Utils.normalize(val.albumName) === expectedAlbumName || val.syncedLyrics  || Math.abs(info.duration - (val.duration*1000)) < 1000);
+	//alert(itemId);
+	let isMatched = false;
+	let id = -1;
+               
+
+               if (itemId === -1)  
+			   recreatedBody.forEach(function(item) {
+                        if (!isMatched) {	 
+						
+                           // if ((item.artistName === artist) & (item.name === title)) {
+                             // if (Math.abs(info.duration - (item.duration*1000)  < 1000)){
+							//if ((item.artistName.includes(info.artist)) & (item.name.includes( info.title))) {	
+							 if (Utils.normalize(item.artistName) === info.artist || Math.abs(info.duration - (item.duration * 1000)) < 1000) {
+                                isMatched = true;
+                                id = item.id;
+                           					
+                        }
+                    }
+                });
+				
+				 
+		 if (itemId === -1) 
+baseURL = 'https://lrclib.net/api/get/' + id
+      else			 
+		baseURL = 'https://lrclib.net/api/get/' + recreatedBody[itemId].id;
+	
+		body = await Spicetify.CosmosAsync.get(baseURL);
+		return body;
+	/*	const baseURL = `https://apic-desktop.musixmatch.com/ws/1.1/macro.subtitles.get?format=json&namespace=lyrics_richsynched&subtitle_format=mxm&app_id=web-desktop-app-v1.0&`;
 
 		const durr = info.duration / 1000;
 
@@ -24,10 +75,10 @@ const ProviderMusixmatch = (() => {
 		const finalURL =
 			baseURL +
 			Object.keys(params)
-				.map(key => `${key}=${encodeURIComponent(params[key])}`)
+				.map(key => key + "=" + encodeURIComponent(params[key]))
 				.join("&");
 
-		let body = await Spicetify.CosmosAsync.get(finalURL, null, headers);
+		let body = await CosmosAsync.get(finalURL, null, headers);
 
 		body = body.message.body.macro_calls;
 
@@ -36,15 +87,14 @@ const ProviderMusixmatch = (() => {
 				error: `Requested error: ${body["matcher.track.get"].message.header.mode}`,
 				uri: info.uri
 			};
-		}
-		if (body["track.lyrics.get"]?.message?.body?.lyrics?.restricted) {
+		} else if (body["track.lyrics.get"]?.message?.body?.lyrics?.restricted) {
 			return {
 				error: "Unfortunately we're not authorized to show these lyrics.",
 				uri: info.uri
 			};
 		}
 
-		return body;
+		return body;*/
 	}
 
 	async function getKaraoke(body) {
@@ -57,7 +107,7 @@ const ProviderMusixmatch = (() => {
 			return null;
 		}
 
-		const baseURL = "https://apic-desktop.musixmatch.com/ws/1.1/track.richsync.get?format=json&subtitle_format=mxm&app_id=web-desktop-app-v1.0&";
+		const baseURL = `https://apic-desktop.musixmatch.com/ws/1.1/track.richsync.get?format=json&subtitle_format=mxm&app_id=web-desktop-app-v1.0&`;
 
 		const params = {
 			f_subtitle_length: meta.track.track_length,
@@ -69,12 +119,12 @@ const ProviderMusixmatch = (() => {
 		const finalURL =
 			baseURL +
 			Object.keys(params)
-				.map(key => `${key}=${encodeURIComponent(params[key])}`)
+				.map(key => key + "=" + encodeURIComponent(params[key]))
 				.join("&");
 
-		let result = await Spicetify.CosmosAsync.get(finalURL, null, headers);
+		let result = await CosmosAsync.get(finalURL, null, headers);
 
-		if (result.message.header.status_code !== 200) {
+		if (result.message.header.status_code != 200) {
 			return null;
 		}
 
@@ -90,7 +140,7 @@ const ProviderMusixmatch = (() => {
 				const wordStartTime = word.o * 1000;
 				const nextWordStartTime = words[index + 1]?.o * 1000;
 
-				const time = !Number.isNaN(nextWordStartTime) ? nextWordStartTime - wordStartTime : endTime - (wordStartTime + startTime);
+				const time = !isNaN(nextWordStartTime) ? nextWordStartTime - wordStartTime : endTime - (wordStartTime + startTime);
 
 				return {
 					word: wordText,
@@ -107,7 +157,33 @@ const ProviderMusixmatch = (() => {
 	}
 
 	function getSynced(body) {
-		const meta = body?.["matcher.track.get"]?.message?.body;
+		let originalSyncedLyrics = body.syncedLyrics;
+          let lines = originalSyncedLyrics.split('\n');
+               let newSyncedLyrics = [];
+                let accumulatedTime = 0;
+
+                lines.forEach(line => {
+                    const matches = line.match(/^\[(\d+:\d+\.\d+)\](.*)/);
+                    if (matches && matches.length === 3) {
+                        const timeParts = matches[1].split(':');
+                        const minutes = parseInt(timeParts[0]);
+                        const seconds = parseFloat(timeParts[1]);
+                        accumulatedTime = minutes * 60000 + seconds * 1000;
+                        const text = matches[2];
+                        newSyncedLyrics.push({
+                            "text": text.trim(),
+                            "startTime": accumulatedTime
+                        });
+                    }
+                });
+                let jsonString = JSON.stringify(newSyncedLyrics, null, 2);
+                let synced = JSON.parse(jsonString).map(line => ({
+                    text: line.text || "♪",
+                    startTime: line.startTime
+                }));
+				//alert( JSON.stringify(synced));
+                return synced;
+	/*	const meta = body?.["matcher.track.get"]?.message?.body;
 		if (!meta) {
 			return null;
 		}
@@ -118,8 +194,7 @@ const ProviderMusixmatch = (() => {
 
 		if (isInstrumental) {
 			return [{ text: "♪ Instrumental ♪", startTime: "0000" }];
-		}
-		if (hasSynced) {
+		} else if (hasSynced) {
 			const subtitle = body["track.subtitles.get"]?.message?.body?.subtitle_list?.[0]?.subtitle;
 			if (!subtitle) {
 				return null;
@@ -131,7 +206,7 @@ const ProviderMusixmatch = (() => {
 			}));
 		}
 
-		return null;
+		return null;*/
 	}
 
 	function getUnsynced(body) {
@@ -146,8 +221,7 @@ const ProviderMusixmatch = (() => {
 
 		if (isInstrumental) {
 			return [{ text: "♪ Instrumental ♪" }];
-		}
-		if (hasUnSynced) {
+		} else if (hasUnSynced) {
 			const lyrics = body["track.lyrics.get"]?.message?.body?.lyrics?.lyrics_body;
 			if (!lyrics) {
 				return null;
@@ -162,8 +236,7 @@ const ProviderMusixmatch = (() => {
 		const track_id = body?.["matcher.track.get"]?.message?.body?.track?.track_id;
 		if (!track_id) return null;
 
-		const baseURL =
-			"https://apic-desktop.musixmatch.com/ws/1.1/crowd.track.translations.get?translation_fields_set=minimal&selected_language=en&comment_format=text&format=json&app_id=web-desktop-app-v1.0&";
+		const baseURL = `https://apic-desktop.musixmatch.com/ws/1.1/crowd.track.translations.get?translation_fields_set=minimal&selected_language=en&comment_format=text&format=json&app_id=web-desktop-app-v1.0&`;
 
 		const params = {
 			track_id,
@@ -173,12 +246,12 @@ const ProviderMusixmatch = (() => {
 		const finalURL =
 			baseURL +
 			Object.keys(params)
-				.map(key => `${key}=${encodeURIComponent(params[key])}`)
+				.map(key => key + "=" + encodeURIComponent(params[key]))
 				.join("&");
 
-		let result = await Spicetify.CosmosAsync.get(finalURL, null, headers);
+		let result = await CosmosAsync.get(finalURL, null, headers);
 
-		if (result.message.header.status_code !== 200) return null;
+		if (result.message.header.status_code != 200) return null;
 
 		result = result.message.body;
 
